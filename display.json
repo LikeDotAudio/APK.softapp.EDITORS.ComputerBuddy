@@ -1,0 +1,8 @@
+{
+  "name": "Computer & Server Node Buddy",
+  "icon": "🖥️",
+  "group": "Design",
+  "subGroup": "Compute & Infrastructure",
+  "description": "Computer & BareMetal Node Buddy: inspect and configure audio/video servers, virtual machines, bare metal compute nodes, NIC interfaces, IP/MAC bindings, system services, and resource telemetry.",
+  "app": "APK:Softapps/EDITORS/EDITORS.ComputerBuddy/index.html"
+}
