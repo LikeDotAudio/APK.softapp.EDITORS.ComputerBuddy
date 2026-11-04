@@ -3,58 +3,246 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Computer & Server Node Buddy — APK.audio</title>
+  <title>Computer & Server Node Buddy</title>
+  <link rel="stylesheet" href="css/theme.css">
   <style>
-    body { font-family: -apple-system, sans-serif; background: #0f1218; color: #e2e8f0; margin: 0; padding: 20px; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #283348; padding-bottom: 12px; margin-bottom: 20px; }
-    .card { background: #171d27; border: 1px solid #283348; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #222c3d; font-family: monospace; }
-    button { background: #0284c7; color: #fff; border: 1px solid #38bdf8; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .split-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      height: calc(100vh - 120px);
+      padding: 16px;
+      overflow: hidden;
+    }
+    .panel {
+      background: var(--surface-primary, #121A2F);
+      border: 1px solid var(--border-color, #1E2A45);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 12px 16px;
+      background: var(--surface-secondary, #0E1424);
+      border-bottom: 1px solid var(--border-color, #1E2A45);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-bright, #F0F4F8);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-body {
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .field-group {
+      margin-bottom: 12px;
+    }
+    .field-group label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted, #8B9BB4);
+      margin-bottom: 5px;
+    }
+    .field-group input, .field-group select {
+      width: 100%;
+      background: var(--surface-bg, #080C16);
+      border: 1px solid var(--border-color, #1E2A45);
+      border-radius: 4px;
+      color: var(--text-bright, #F0F4F8);
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .svg-viewport {
+      background: var(--surface-bg, #080C16);
+      border-radius: 6px;
+      border: 1px solid var(--border-color, #1E2A45);
+      padding: 10px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .table-container {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--border-color, #1E2A45);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.data-table th {
+      background: var(--surface-secondary, #0E1424);
+      color: var(--text-muted, #8B9BB4);
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color, #1E2A45);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    table.data-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border-color, #1E2A45);
+      color: var(--text-bright, #F0F4F8);
+    }
+    .inline-cell {
+      background: rgba(255, 255, 255, 0.02);
+      cursor: text;
+    }
+    .inline-cell:focus {
+      outline: 1px solid var(--accent-orange, #F4902C);
+      background: rgba(244, 144, 44, 0.1);
+    }
+    .service-badge {
+      display: inline-flex;
+      align-items: center;
+      background: #1E2A45;
+      border: 1px solid #2B3C5D;
+      color: var(--text-bright, #F0F4F8);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin: 4px 6px 4px 0;
+    }
+    .badge-remove {
+      background: none;
+      border: none;
+      color: #FF5A5A;
+      font-size: 14px;
+      font-weight: bold;
+      margin-left: 6px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .badge-remove:hover {
+      color: #FF8080;
+    }
+    .btn-delete {
+      background: transparent;
+      border: none;
+      color: #FF5A5A;
+      cursor: pointer;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .btn-delete:hover {
+      background: rgba(255, 90, 90, 0.2);
+    }
   </style>
 </head>
-<body>
-  <header>
-    <div style="display:flex; align-items:center; gap:10px;">
-      <span style="font-size:20px;">🖥️</span>
-      <h2>Computer & Server Node Buddy</h2>
+<body class="deep-horizon">
+  <div class="window-header">
+    <div class="window-title">
+      <span class="window-icon">🖥️</span>
+      <span class="window-text">Computer & Server Node Buddy</span>
+      <span id="block-tag" class="block-tag">COMPUTE NODE BLOCK</span>
     </div>
-    <button id="btn-export">Export Host JSON</button>
-  </header>
-
-  <div class="card">
-    <div style="font-size:16px; font-weight:700; color:#38bdf8;" id="host-name">SRV-AUD-01</div>
-    <div style="font-size:13px; color:#94a3b8; margin-top:4px;">OS: Debian 12 Bookworm · Kernel 6.1-RT (Realtime Audio)</div>
+    <div class="window-actions">
+      <button id="btn-open" class="btn-action">📂 Open Block</button>
+      <button id="btn-discovered" class="btn-action">⚡ Discovered</button>
+      <button id="btn-save" class="btn-action btn-primary">💾 Save & Return</button>
+      <button id="btn-close" class="btn-action btn-close">✕</button>
+    </div>
   </div>
 
-  <div class="card">
-    <h3 style="font-size:14px; text-transform:uppercase; color:#94a3b8;">Network Interfaces</h3>
-    <table>
-      <thead>
-        <tr><th>Interface</th><th>IP Address</th><th>MAC Address</th><th>Speed</th><th>Role</th></tr>
-      </thead>
-      <tbody id="iface-rows"></tbody>
-    </table>
+  <div class="split-layout">
+    <!-- Properties sidebar -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Hardware & Node Spec</span>
+      </div>
+      <div class="panel-body">
+        <div class="field-group">
+          <label>Hostname / Node ID</label>
+          <input type="text" id="prop-hostname" value="SRV-AUD-01">
+        </div>
+        <div class="field-group">
+          <label>Chassis / Form Factor</label>
+          <select id="prop-formFactor">
+            <option value="1U Rackmount">1U Rackmount</option>
+            <option value="2U Rackmount">2U Rackmount</option>
+            <option value="4U Rackmount">4U Rackmount</option>
+            <option value="Blade Node">Blade Node</option>
+            <option value="Mini-PC / NUC">Mini-PC / NUC</option>
+            <option value="Virtual Machine / LXC">Virtual Machine / LXC</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Operating System</label>
+          <input type="text" id="prop-os" value="Debian 12 Bookworm">
+        </div>
+        <div class="field-group">
+          <label>CPU Processor</label>
+          <input type="text" id="prop-cpu" value="AMD EPYC 7302P 16-Core">
+        </div>
+        <div class="field-group">
+          <label>System RAM</label>
+          <input type="text" id="prop-ram" value="64 GB ECC DDR4">
+        </div>
+        <div class="field-group">
+          <label>GPU Acceleration</label>
+          <input type="text" id="prop-gpu" value="None (Headless)">
+        </div>
+        <div class="field-group">
+          <label>Storage Array</label>
+          <input type="text" id="prop-storage" value="2x 1TB NVMe RAID-1">
+        </div>
+        <div class="field-group">
+          <label>Max Power Budget (Watts)</label>
+          <input type="number" id="prop-powerWatts" value="250">
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="panel">
+      <div class="panel-header">
+        <span id="display-node-title">Node Network Interfaces & Daemons</span>
+        <button id="btn-add-iface" class="btn-action btn-small">+ Add Interface</button>
+      </div>
+      <div class="panel-body" style="display: flex; flex-direction: column;">
+        <div id="chassis-svg" class="svg-viewport"></div>
+
+        <div style="font-weight: 600; font-size: 12px; margin-bottom: 8px; color: var(--text-bright);">Network Interfaces & VLANs</div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 12%;">IFace</th>
+                <th style="width: 20%;">IP Address</th>
+                <th style="width: 18%;">Subnet Mask</th>
+                <th style="width: 20%;">MAC Address</th>
+                <th style="width: 12%;">Speed</th>
+                <th style="width: 10%;">Role</th>
+                <th style="width: 8%;">VLAN</th>
+                <th style="width: 5%; text-align: center;">Act</th>
+              </tr>
+            </thead>
+            <tbody id="iface-table-body"></tbody>
+          </table>
+        </div>
+
+        <div style="font-weight: 600; font-size: 12px; margin-bottom: 8px; color: var(--text-bright);">Active Daemons & System Services</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <input type="text" id="new-service-input" placeholder="e.g. ptp4l, aes67-daemon, shairport-sync" style="flex: 1; background: var(--surface-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px; color: var(--text-bright); font-size: 12px;">
+          <button id="btn-add-service" class="btn-action btn-small">+ Add Service</button>
+        </div>
+        <div id="services-list" style="display: flex; flex-wrap: wrap;"></div>
+      </div>
+    </div>
   </div>
 
-  <script type="module">
-    import { ComputerNodeModel } from './js/computerApp.js';
-    const model = new ComputerNodeModel('SRV-AUD-01');
-
-    const tbody = document.getElementById('iface-rows');
-    model.interfaces.forEach(i => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td><b>${i.name}</b></td><td>${i.ip}</td><td>${i.mac}</td><td>${i.speed}</td><td>${i.role}</td>`;
-      tbody.appendChild(tr);
-    });
-
-    document.getElementById('btn-export').addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(model, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${model.hostname}-config.json`;
-      a.click();
-    });
-  </script>
+  <script type="module" src="js/computerApp.js"></script>
 </body>
 </html>
