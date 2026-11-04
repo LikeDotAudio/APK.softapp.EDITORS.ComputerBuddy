@@ -166,10 +166,10 @@ export class ComputerApp {
       const portColor = is10G ? '#F4902C' : '#4A9EFF';
 
       portsSvg += `
-        <rect x="${x}" y="32" width="28" height="24" rx="2" fill="#080C16" stroke="${portColor}" stroke-width="1.5"/>
+        <rect x="${x}" y="32" width="28" height="24" rx="2" fill="#121212" stroke="${portColor}" stroke-width="1.5"/>
         <circle cx="${x + 6}" cy="24" r="2.5" fill="#4ADE80"/>
         <circle cx="${x + 22}" cy="24" r="2.5" fill="#F4902C"/>
-        <text x="${x + 14}" y="48" fill="#F0F4F8" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">${iface.name}</text>
+        <text x="${x + 14}" y="48" fill="#f4f4f5" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">${iface.name}</text>
       `;
     });
 
@@ -177,8 +177,8 @@ export class ComputerApp {
       <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="chassisGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#1E2A45"/>
-            <stop offset="100%" stop-color="#121A2F"/>
+            <stop offset="0%" stop-color="#2c2c2c"/>
+            <stop offset="100%" stop-color="#18181b"/>
           </linearGradient>
         </defs>
 
@@ -186,31 +186,31 @@ export class ComputerApp {
         <rect x="25" y="10" width="${width - 50}" height="70" rx="3" fill="url(#chassisGrad)" stroke="#2B3C5D" stroke-width="1.5"/>
 
         <!-- Left Rack Ear with oval mounting slots -->
-        <rect x="10" y="10" width="15" height="70" rx="2" fill="#0E1424" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="24" rx="3" ry="5" fill="#080C16" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="66" rx="3" ry="5" fill="#080C16" stroke="#2B3C5D" stroke-width="1"/>
+        <rect x="10" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="17.5" cy="24" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="17.5" cy="66" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
 
         <!-- Right Rack Ear with oval mounting slots -->
-        <rect x="${width - 25}" y="10" width="15" height="70" rx="2" fill="#0E1424" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="24" rx="3" ry="5" fill="#080C16" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="66" rx="3" ry="5" fill="#080C16" stroke="#2B3C5D" stroke-width="1"/>
+        <rect x="${width - 25}" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="${width - 17.5}" cy="24" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="${width - 17.5}" cy="66" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
 
         <!-- Power Button & Health LEDs -->
-        <circle cx="50" cy="45" r="8" fill="#080C16" stroke="#4ADE80" stroke-width="1.5"/>
+        <circle cx="50" cy="45" r="8" fill="#121212" stroke="#4ADE80" stroke-width="1.5"/>
         <text x="50" y="48" fill="#4ADE80" font-size="9" font-weight="bold" font-family="sans-serif" text-anchor="middle">⏻</text>
 
         <circle cx="72" cy="38" r="3" fill="#4ADE80"/>
-        <text x="80" y="41" fill="#8B9BB4" font-size="8" font-family="sans-serif">PWR</text>
+        <text x="80" y="41" fill="#888888" font-size="8" font-family="sans-serif">PWR</text>
         <circle cx="72" cy="52" r="3" fill="#4A9EFF"/>
-        <text x="80" y="55" fill="#8B9BB4" font-size="8" font-family="sans-serif">ACT</text>
+        <text x="80" y="55" fill="#888888" font-size="8" font-family="sans-serif">ACT</text>
 
         <!-- Hostname Badge -->
-        <rect x="110" y="28" width="140" height="34" rx="4" fill="#080C16" stroke="#2B3C5D" stroke-width="1"/>
+        <rect x="110" y="28" width="140" height="34" rx="4" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
         <text x="120" y="44" fill="#F4902C" font-size="12" font-weight="bold" font-family="JetBrains Mono, monospace">${this.model.hostname}</text>
-        <text x="120" y="56" fill="#8B9BB4" font-size="9" font-family="sans-serif">${this.model.formFactor} • ${this.model.powerWatts}W</text>
+        <text x="120" y="56" fill="#888888" font-size="9" font-family="sans-serif">${this.model.formFactor} • ${this.model.powerWatts}W</text>
 
         <!-- Airflow Vent Grille -->
-        <g stroke="#1E2A45" stroke-width="2">
+        <g stroke="#2c2c2c" stroke-width="2">
           <line x1="265" y1="26" x2="265" y2="64"/>
           <line x1="272" y1="26" x2="272" y2="64"/>
           <line x1="279" y1="26" x2="279" y2="64"/>
