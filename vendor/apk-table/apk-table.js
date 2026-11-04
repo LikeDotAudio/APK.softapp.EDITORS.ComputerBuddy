@@ -12,7 +12,10 @@
          { key: 'speed', label: 'Speed', type: 'select', options: ['', '1 Gbps'] },
          { key: 'vlan', label: 'VLAN', type: 'number' },
          { key: 'mac', label: 'MAC', editable: false, mono: true },
+         { key: 'link', label: 'Link', cellClass: (v) => v ? 'up' : 'down',  // extra td class
+           render: (v, row, i) => button('Edit', …) },   // a Node, never an HTML string
        ],
+       rowClass(row, i) {},                     // extra tr class
        rows,                                    // array of plain objects
        onEdit(i, key, value, row) {},           // i = index in `rows`, whatever the sort
        onDelete(i, row) {},                     // present → a ✕ column
@@ -37,7 +40,10 @@
    .apk.scripts/vendor_shared_web.py --check.
 
    Plain script, no framework, no build. Every cell is text (textContent), never
-   HTML: rows come off the bus and off files. */
+   HTML: rows come off the bus and off files. A column that needs more than text
+   (a button, a badge, a swatch) gives render(value, row, i) returning a DOM Node
+   it built itself; a string it returns is still text. CSV and Copy take the raw
+   value (or format) of such a column, never what render drew. */
 (function (root) {
     'use strict';
 
@@ -77,11 +83,13 @@
                 label: c.label !== undefined ? c.label : c.key,
                 type: c.type || 'text',
                 options: c.options || [],
-                editable: c.editable !== false && opts.editable !== false && c.type !== 'readonly',
+                editable: c.editable !== false && opts.editable !== false && c.type !== 'readonly' && typeof c.render !== 'function',
                 mono: !!c.mono,
                 width: c.width || '',
                 align: c.align || (c.type === 'number' ? 'right' : ''),
                 format: c.format || null,
+                render: typeof c.render === 'function' ? c.render : null,
+                cellClass: typeof c.cellClass === 'function' ? c.cellClass : null,
                 placeholder: c.placeholder || '',
             };
         });
@@ -165,8 +173,16 @@
         }
 
         function cell(i, c) {
-            var td = el('td', (c.align ? 'apk-align-' + c.align : '') + (c.mono ? ' apk-mono' : ''));
             var v = rows[i][c.key];
+            var extra = c.cellClass ? text(c.cellClass(v, rows[i], i)) : '';
+            var td = el('td', ((c.align ? 'apk-align-' + c.align : '') + (c.mono ? ' apk-mono' : '') + (extra ? ' ' + extra : '')).trim());
+            if (c.render) {
+                // A Node is appended as built; anything else is text. Never parsed as HTML.
+                var out = c.render(v, rows[i], i);
+                if (out && typeof out === 'object' && out.nodeType) td.appendChild(out);
+                else td.textContent = text(out);
+                return td;
+            }
             if (c.type === 'select' && c.editable) {
                 var sel = el('select', 'apk-table-select');
                 var opts2 = c.options.slice();
@@ -199,7 +215,8 @@
             tbody.innerHTML = '';
             var idx = visible();
             idx.forEach(function (i) {
-                var tr = el('tr', i === selected ? 'apk-selected' : '');
+                var rc = opts.rowClass ? text(opts.rowClass(rows[i], i)) : '';
+                var tr = el('tr', ((i === selected ? 'apk-selected' : '') + (rc ? ' ' + rc : '')).trim());
                 tr.setAttribute('data-index', i);
                 columns.forEach(function (c) { tr.appendChild(cell(i, c)); });
                 if (opts.onDelete) {
@@ -217,7 +234,7 @@
                     tr.appendChild(td);
                 }
                 tr.onclick = function (e) {
-                    if (e.target.closest && e.target.closest('[contenteditable="true"], select, button')) return;
+                    if (e.target.closest && e.target.closest('[contenteditable="true"], select, button, input, textarea, a')) return;
                     handle.select(i);
                 };
                 tbody.appendChild(tr);
