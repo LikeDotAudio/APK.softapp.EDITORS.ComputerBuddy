@@ -1,0 +1,83 @@
+{
+  "_about": "What ComputerBuddy calls a computer. Every bus fact about a machine adds or takes away points; the total sorts it into a tier. Tunables only — no code reads a device list from anywhere but here. Matches are case-insensitive substrings unless the key says Re (a regular expression).",
+
+  "tiers": {
+    "computer": 60,
+    "likely": 30,
+    "unsure": -29
+  },
+
+  "trustMinutes": 5,
+
+  "agent": {
+    "score": 100,
+    "why": "reports itself: runs an APK.audio agent",
+    "notComputerTargets": { "ESP32": "an ESP32 microcontroller, not a computer", "HID": "a HID peripheral, not a computer" }
+  },
+
+  "ignoreProtocols": ["nmos", "trunk", "trunk_sim", "trunk_caster", "wifi", "visa", "netbox"],
+
+  "notComputerModelsRe": {
+    "score": -80,
+    "pattern": "PS[345]|PlayStation|Xbox|Nintendo|Chromecast|Google Home|Nest|AppleTV|Apple TV|iPhone|iPad|Sonos|Roku|Echo|Fire ?TV|Printer|LaserJet|OfficeJet"
+  },
+
+  "computerClasses": {
+    "score": 60,
+    "match": ["Computer", "Workstation", "Server", "Desktop", "Laptop", "Single-board", "Virtual Machine"]
+  },
+
+  "notComputerClasses": {
+    "score": -80,
+    "match": ["Printer", "Speaker", "Media Player", "Video Cast", "Wi-Fi Access Point", "Wi-Fi Radio", "Network Switch", "Router", "Clock", "Games Console", "MIDI Interface", "Audio Interface", "HCI Controller", "Camera", "Television", "Instrument"]
+  },
+
+  "computerVendors": [
+    { "match": "Raspberry Pi", "score": 70, "formFactor": "Single-Board Computer" },
+    { "match": "Micro-Star", "score": 50 },
+    { "match": "ASUSTek", "score": 45 },
+    { "match": "GIGA-BYTE", "score": 45 },
+    { "match": "ASRock", "score": 50 },
+    { "match": "Super Micro", "score": 60, "formFactor": "1U Rackmount" },
+    { "match": "Dell", "score": 45 },
+    { "match": "Hewlett Packard", "score": 40 },
+    { "match": "HP Inc", "score": 40 },
+    { "match": "Lenovo", "score": 45 },
+    { "match": "Framework Computer", "score": 60, "formFactor": "Laptop" },
+    { "match": "Intel Corporate", "score": 35 },
+    { "match": "Realtek", "score": 25 },
+    { "match": "Apple", "score": 20 },
+    { "match": "Microsoft", "score": 20 }
+  ],
+
+  "notComputerVendors": {
+    "score": -40,
+    "match": ["Google", "Sonos", "Amazon", "Roku", "Audinate", "Shure", "Yamaha", "Focusrite", "Presonus", "Bridgeco", "Agilent", "Keysight", "Rohde", "TRENDnet", "Netgear", "TP-LINK", "Ubiquiti", "Cisco", "Brother", "Canon", "Epson", "Espressif", "Tuya", "Sony Interactive"]
+  },
+
+  "computerServices": {
+    "score": 50,
+    "match": ["_ssh._tcp", "_sftp-ssh._tcp", "_workstation._tcp", "_smb._tcp", "_rfb._tcp", "_afpovertcp._tcp", "_device-info._tcp", "_adisk._tcp"]
+  },
+
+  "nameHintsRe": {
+    "score": 40,
+    "pattern": "(^|[-_.])(pc|desktop|laptop|server|srv|ws|workstation|nuc|macbook|imac|mac-?mini|mac-?pro|raspberrypi|rpi|pi[0-9]*|ubuntu|debian|fedora|arch|win(dows)?|node[0-9]*)([-_.0-9]|$)"
+  },
+
+  "routerScore": -80,
+
+  "virtualInterfacesRe": "^(lo|docker[0-9]*|br-[0-9a-f]+|veth.*|virbr[0-9]*|cni[0-9]*|flannel.*|tun[0-9]*|tap[0-9]*|wg[0-9]*)$",
+  "virtualInterfaceScore": -90,
+
+  "randomisedMacScore": 10,
+
+  "formFactorHintsRe": [
+    { "pattern": "Raspberry Pi|Compute Module", "formFactor": "Single-Board Computer" },
+    { "pattern": "NUC|Mini ?PC|Mac ?mini", "formFactor": "Mini-PC / NUC" },
+    { "pattern": "MacBook|ThinkPad|Latitude|XPS|Laptop|Notebook", "formFactor": "Laptop" },
+    { "pattern": "PowerEdge|ProLiant|Supermicro|Rack", "formFactor": "1U Rackmount" },
+    { "pattern": "KVM|QEMU|VMware|VirtualBox|Hyper-V|LXC", "formFactor": "Virtual Machine / LXC" },
+    { "pattern": "MS-7|ROG|PRIME|Z[0-9]{3}|B[0-9]{3}|X[0-9]{3}|OptiPlex|Desktop|Tower", "formFactor": "Desktop / Tower" }
+  ]
+}

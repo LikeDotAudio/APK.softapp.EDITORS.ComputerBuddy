@@ -76,8 +76,19 @@ export class ComputerNodeModel {
       storage: this.storage,
       powerWatts: this.powerWatts,
       interfaces: JSON.parse(JSON.stringify(this.interfaces)),
-      services: [...this.services]
+      services: [...this.services],
+      ...(this.source ? { source: this.source } : {})
     };
+  }
+
+  /** Take a machine from the network whole: every field is what it reported, '' where nobody said. */
+  replaceWith(block = {}) {
+    for (const f of ['hostname', 'formFactor', 'os', 'cpu', 'ram', 'gpu', 'storage', 'powerWatts']) {
+      this[f] = block[f] ?? '';
+    }
+    this.interfaces = JSON.parse(JSON.stringify(block.interfaces || []));
+    this.services = [...(block.services || [])];
+    this.source = block.source || null;
   }
 
   fromBlock(block = {}) {
@@ -95,5 +106,6 @@ export class ComputerNodeModel {
     if (Array.isArray(block.services)) {
       this.services = [...block.services];
     }
+    this.source = block.source || null;
   }
 }

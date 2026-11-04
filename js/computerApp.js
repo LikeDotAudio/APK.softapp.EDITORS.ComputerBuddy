@@ -3,6 +3,10 @@
 
 import { ComputerNodeModel } from './computerModel.js';
 import { BlockBridge } from './blockBridge.js';
+import { NetworkPanel } from './networkPanel.js';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const SPEEDS = ['1 Gbps', '2.5 Gbps', '10 Gbps', '25 Gbps', '100 Gbps'];
 
 export { ComputerNodeModel };
 
@@ -16,20 +20,46 @@ export class ComputerApp {
       onBlockChanged: () => this.render()
     });
 
-    this.tableBody = document.getElementById('iface-table-body');
     this.servicesContainer = document.getElementById('services-list');
     this.svgContainer = document.getElementById('chassis-svg');
     this.initControls();
     this.render();
-    this.autoConnect();
+
+    /* The real computers on the network (bus via APKBus, topics via APKContracts).
+       Picking one loads it; while it is untouched it follows the bus live. An
+       edit stops the following, so live data never overwrites a hand change. */
+    this.following = false;
+    const root = document.getElementById('net-panel');
+    if (root) {
+      this.network = new NetworkPanel({
+        root,
+        onPick: (m, block) => { this.following = true; this.loadMachine(block); },
+        onUpdate: (m, block) => { if (this.following && !this.isTyping()) this.loadMachine(block); },
+      });
+      this.network.start();
+    }
   }
 
-  async autoConnect() {
-    const discovered = await this.bridge.fetchDiscoveredProject();
-    if (discovered && discovered.servers && discovered.servers.length > 0) {
-      this.model.fromBlock(discovered.servers[0]);
-      this.render();
+  /** Focus in an editor field: a live refresh now would eat the keystrokes. */
+  isTyping() {
+    const el = document.activeElement;
+    return !!el && (el.isContentEditable || ((el.tagName === 'INPUT' || el.tagName === 'SELECT') && !el.closest('#net-panel')));
+  }
+
+  loadMachine(block) {
+    this.model.replaceWith(block);
+    const tag = document.getElementById('block-tag');
+    if (tag) tag.textContent = this.following ? 'LIVE FROM THE NETWORK' : 'COMPUTE NODE BLOCK';
+    this.render();
+  }
+
+  edited() {
+    if (this.following) {
+      this.following = false;
+      const tag = document.getElementById('block-tag');
+      if (tag) tag.textContent = 'EDITED (no longer following the bus)';
     }
+    this.bridge.notifyChanged();
   }
 
   handleBlockLoaded(block, meta) {
@@ -60,6 +90,7 @@ export class ComputerApp {
           reader.onload = (evt) => {
             try {
               const data = JSON.parse(evt.target.result);
+              this.following = false;
               this.model.fromBlock(data);
               this.render();
             } catch (err) {
@@ -79,14 +110,8 @@ export class ComputerApp {
 
     const btnDiscovered = document.getElementById('btn-discovered');
     if (btnDiscovered) {
-      btnDiscovered.addEventListener('click', async () => {
-        const disc = await this.bridge.fetchDiscoveredProject();
-        if (disc && disc.servers && disc.servers.length > 0) {
-          this.model.fromBlock(disc.servers[0]);
-          this.render();
-        } else {
-          alert('No compute node blocks found in current discovered project.');
-        }
+      btnDiscovered.addEventListener('click', () => {
+        document.body.classList.toggle('net-hidden');
       });
     }
 
@@ -95,7 +120,7 @@ export class ComputerApp {
       btnAddIface.addEventListener('click', () => {
         this.model.addInterface();
         this.render();
-        this.bridge.notifyChanged();
+        this.edited();
       });
     }
 
@@ -108,7 +133,7 @@ export class ComputerApp {
           this.model.addService(val);
           inputNewService.value = '';
           this.renderServices();
-          this.bridge.notifyChanged();
+          this.edited();
         }
       };
       btnAddService.addEventListener('click', doAdd);
@@ -124,7 +149,7 @@ export class ComputerApp {
         el.addEventListener('input', (e) => {
           this.model[field] = e.target.value;
           this.renderChassis();
-          this.bridge.notifyChanged();
+          this.edited();
         });
       }
     });
@@ -141,13 +166,16 @@ export class ComputerApp {
     ['hostname', 'formFactor', 'os', 'cpu', 'ram', 'gpu', 'storage', 'powerWatts'].forEach(field => {
       const el = document.getElementById(`prop-${field}`);
       if (el && this.model[field] !== undefined) {
+        if (el.tagName === 'SELECT' && this.model[field] && ![...el.options].some((o) => o.value === this.model[field])) {
+          el.add(new Option(this.model[field], this.model[field]));
+        }
         el.value = this.model[field];
       }
     });
 
     const titleEl = document.getElementById('display-node-title');
     if (titleEl) {
-      titleEl.textContent = `${this.model.hostname} (${this.model.formFactor} • ${this.model.os})`;
+      titleEl.textContent = `${this.model.hostname} (${[this.model.formFactor, this.model.os].filter(Boolean).join(' • ')})`;
     }
   }
 
@@ -162,14 +190,14 @@ export class ComputerApp {
     this.model.interfaces.forEach((iface, idx) => {
       const x = 320 + idx * 42;
       if (x + 36 > width - 50) return;
-      const is10G = iface.speed.includes('10');
+      const is10G = /^(10|25|40|100) Gbps/.test(iface.speed || '');
       const portColor = is10G ? '#F4902C' : '#4A9EFF';
 
       portsSvg += `
         <rect x="${x}" y="32" width="28" height="24" rx="2" fill="#121212" stroke="${portColor}" stroke-width="1.5"/>
         <circle cx="${x + 6}" cy="24" r="2.5" fill="#4ADE80"/>
         <circle cx="${x + 22}" cy="24" r="2.5" fill="#F4902C"/>
-        <text x="${x + 14}" y="48" fill="#f4f4f5" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">${iface.name}</text>
+        <text x="${x + 14}" y="48" fill="#f4f4f5" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">${esc(iface.name)}</text>
       `;
     });
 
@@ -185,15 +213,15 @@ export class ComputerApp {
         <!-- Main 19-inch 1U Faceplate -->
         <rect x="25" y="10" width="${width - 50}" height="70" rx="3" fill="url(#chassisGrad)" stroke="#2B3C5D" stroke-width="1.5"/>
 
-        <!-- Left Rack Ear with oval mounting slots -->
+        <!-- Left Rack Ear with wide (horizontal) mounting slots -->
         <rect x="10" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="24" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="66" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="17.5" cy="24" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="17.5" cy="66" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
 
-        <!-- Right Rack Ear with oval mounting slots -->
+        <!-- Right Rack Ear with wide (horizontal) mounting slots -->
         <rect x="${width - 25}" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="24" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="66" rx="3" ry="5" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="${width - 17.5}" cy="24" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
+        <ellipse cx="${width - 17.5}" cy="66" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
 
         <!-- Power Button & Health LEDs -->
         <circle cx="50" cy="45" r="8" fill="#121212" stroke="#4ADE80" stroke-width="1.5"/>
@@ -206,8 +234,8 @@ export class ComputerApp {
 
         <!-- Hostname Badge -->
         <rect x="110" y="28" width="140" height="34" rx="4" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <text x="120" y="44" fill="#F4902C" font-size="12" font-weight="bold" font-family="JetBrains Mono, monospace">${this.model.hostname}</text>
-        <text x="120" y="56" fill="#888888" font-size="9" font-family="sans-serif">${this.model.formFactor} • ${this.model.powerWatts}W</text>
+        <text x="120" y="44" fill="#F4902C" font-size="12" font-weight="bold" font-family="JetBrains Mono, monospace">${esc(this.model.hostname)}</text>
+        <text x="120" y="56" fill="#888888" font-size="9" font-family="sans-serif">${esc(this.model.formFactor)}${this.model.powerWatts ? ` • ${esc(this.model.powerWatts)}W` : ''}</text>
 
         <!-- Airflow Vent Grille -->
         <g stroke="#2c2c2c" stroke-width="2">
@@ -226,65 +254,36 @@ export class ComputerApp {
     this.svgContainer.innerHTML = svg;
   }
 
+  /* The interfaces are an APKTable (vendor/apk-table): one table module for the
+     whole project, reachable by script as APKTable.get('computer-interfaces'). */
   renderInterfaces() {
-    if (!this.tableBody) return;
-    this.tableBody.innerHTML = '';
-
-    this.model.interfaces.forEach((iface, idx) => {
-      const tr = document.createElement('tr');
-
-      tr.innerHTML = `
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="name">${iface.name || ''}</td>
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="ip">${iface.ip || ''}</td>
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="subnet">${iface.subnet || '255.255.255.0'}</td>
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="mac">${iface.mac || ''}</td>
-        <td>
-          <select class="control-select" data-idx="${idx}" data-field="speed">
-            <option value="1 Gbps" ${iface.speed === '1 Gbps' ? 'selected' : ''}>1 Gbps</option>
-            <option value="2.5 Gbps" ${iface.speed === '2.5 Gbps' ? 'selected' : ''}>2.5 Gbps</option>
-            <option value="10 Gbps" ${iface.speed === '10 Gbps' ? 'selected' : ''}>10 Gbps</option>
-            <option value="25 Gbps" ${iface.speed === '25 Gbps' ? 'selected' : ''}>25 Gbps</option>
-            <option value="100 Gbps" ${iface.speed === '100 Gbps' ? 'selected' : ''}>100 Gbps</option>
-          </select>
-        </td>
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="role">${iface.role || 'General'}</td>
-        <td class="inline-cell" contenteditable="true" data-idx="${idx}" data-field="vlan">${iface.vlan || '1'}</td>
-        <td style="text-align: center;">
-          <button class="btn-delete" data-idx="${idx}" title="Remove Interface">✕</button>
-        </td>
-      `;
-
-      this.tableBody.appendChild(tr);
-    });
-
-    this.tableBody.querySelectorAll('[contenteditable=true]').forEach(cell => {
-      cell.addEventListener('blur', (e) => {
-        const idx = parseInt(e.target.dataset.idx, 10);
-        const field = e.target.dataset.field;
-        this.model.updateInterface(idx, field, e.target.innerText.trim());
-        this.renderChassis();
-        this.bridge.notifyChanged();
+    const host = document.getElementById('iface-table');
+    if (!host || !window.APKTable) return;
+    if (!this.ifaceTable) {
+      this.ifaceTable = window.APKTable.create(host, {
+        id: 'computer-interfaces',
+        searchPlaceholder: 'Filter interfaces',
+        empty: 'No interfaces. Add one, or pick a machine on the network.',
+        columns: [
+          { key: 'name', label: 'IFace', mono: true },
+          { key: 'ip', label: 'IP Address', mono: true },
+          { key: 'subnet', label: 'Subnet Mask', mono: true },
+          { key: 'mac', label: 'MAC Address', mono: true },
+          { key: 'speed', label: 'Speed', type: 'select', options: ['', ...SPEEDS] },
+          { key: 'role', label: 'Role' },
+          { key: 'vlan', label: 'VLAN', type: 'number' },
+        ],
+        rows: this.model.interfaces,
+        onEdit: () => { this.renderChassis(); this.edited(); },
+        onDelete: (i) => {
+          this.model.removeInterface(i);
+          this.render();
+          this.edited();
+        },
       });
-    });
-
-    this.tableBody.querySelectorAll('select.control-select').forEach(sel => {
-      sel.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.dataset.idx, 10);
-        const field = e.target.dataset.field;
-        this.model.updateInterface(idx, field, e.target.value);
-        this.renderChassis();
-        this.bridge.notifyChanged();
-      });
-    });
-
-    this.tableBody.querySelectorAll('.btn-delete').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(e.target.dataset.idx, 10);
-        this.model.removeInterface(idx);
-        this.render();
-        this.bridge.notifyChanged();
-      });
-    });
+    } else {
+      this.ifaceTable.setRows(this.model.interfaces);
+    }
   }
 
   renderServices() {
@@ -295,7 +294,7 @@ export class ComputerApp {
       const badge = document.createElement('span');
       badge.className = 'service-badge';
       badge.innerHTML = `
-        <span>${service}</span>
+        <span>${esc(service)}</span>
         <button class="badge-remove" data-idx="${idx}">×</button>
       `;
       this.servicesContainer.appendChild(badge);
@@ -306,7 +305,7 @@ export class ComputerApp {
         const idx = parseInt(e.target.dataset.idx, 10);
         this.model.removeService(idx);
         this.renderServices();
-        this.bridge.notifyChanged();
+        this.edited();
       });
     });
   }
