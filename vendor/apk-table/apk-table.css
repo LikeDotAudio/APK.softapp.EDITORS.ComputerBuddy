@@ -52,3 +52,11 @@ table.apk-table .apk-table-del {
 }
 table.apk-table .apk-table-del:hover { background: rgba(248, 81, 73, 0.18); }
 table.apk-table tr.apk-table-empty td { color: var(--text-muted, #888); text-align: center; padding: 14px; }
+
+/* A table a page draws itself, adopted (APKTable.adopt / markup / scan) or
+   registered: it keeps the page's own look; only the sort affordance is common. */
+table[data-apk-table] th.apk-sortable { cursor: pointer; }
+table[data-apk-table] th[aria-sort]::after { content: ' ▲'; color: var(--apk-accent, #f4902c); }
+table[data-apk-table] th[aria-sort="descending"]::after { content: ' ▼'; }
+table[data-apk-table] tr.apk-selected { background: var(--apk-accent-tint, rgba(244, 144, 44, 0.12)); }
+.apk-table-host { display: none; }
