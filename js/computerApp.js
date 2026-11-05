@@ -2,10 +2,11 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
 import { ComputerNodeModel } from './computerModel.js';
-import { BlockBridge } from './blockBridge.js';
 import { NetworkPanel } from './networkPanel.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* APKSoftapp.esc when the client is loaded; the same five-character escape in node tests. */
+const esc = (s) => (typeof window !== 'undefined' && window.APKSoftapp ? window.APKSoftapp.esc(s)
+  : String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
 const SPEEDS = ['1 Gbps', '2.5 Gbps', '10 Gbps', '25 Gbps', '100 Gbps'];
 
 export { ComputerNodeModel };
@@ -13,11 +14,13 @@ export { ComputerNodeModel };
 export class ComputerApp {
   constructor() {
     this.model = new ComputerNodeModel();
-    this.bridge = new BlockBridge({
-      name: 'Computer Buddy',
-      type: 'computer_node',
-      onBlockLoaded: (b, m) => this.handleBlockLoaded(b, m),
-      onBlockChanged: () => this.render()
+    /* The CAD bridge: cad.like.audio/host@1 through the vendored APKSoftapp
+       client (vendor/apk-softapp). Same origin only; standalone, Save downloads. */
+    this.host = window.APKSoftapp.connectHost({
+      editor: 'Computer Buddy',
+      blockType: 'computer_node',
+      onLoad: (b, m) => this.handleBlockLoaded(b, m),
+      onRequest: () => ({ block: this.model.toBlock(), meta: { name: this.model.hostname } }),
     });
 
     this.servicesContainer = document.getElementById('services-list');
@@ -59,11 +62,12 @@ export class ComputerApp {
       const tag = document.getElementById('block-tag');
       if (tag) tag.textContent = 'EDITED (no longer following the bus)';
     }
-    this.bridge.notifyChanged();
+    this.host.changed(this.model.toBlock());
   }
 
   handleBlockLoaded(block, meta) {
     if (block) {
+      this.following = false;
       this.model.fromBlock(block);
       this.render();
     }
@@ -73,7 +77,7 @@ export class ComputerApp {
     const btnSave = document.getElementById('btn-save');
     if (btnSave) {
       btnSave.addEventListener('click', () => {
-        this.bridge.saveBlock(this.model.toBlock(), { name: this.model.hostname });
+        this.host.save(this.model.toBlock(), { name: this.model.hostname, filename: this.model.hostname || 'computer_node' });
       });
     }
 
@@ -105,7 +109,7 @@ export class ComputerApp {
 
     const btnClose = document.getElementById('btn-close');
     if (btnClose) {
-      btnClose.addEventListener('click', () => this.bridge.close());
+      btnClose.addEventListener('click', () => this.host.close());
     }
 
     const btnDiscovered = document.getElementById('btn-discovered');
@@ -179,79 +183,71 @@ export class ComputerApp {
     }
   }
 
+  /* The front, drawn in mm (viewBox units are mm). EIA-310: a 482.6 mm (19")
+     panel, a 440 mm body between two ears, 44.45 mm per U, fixing slots at
+     ±15.875 mm from the U's centre, 7.95 mm in from the panel edge — the same
+     numbers EDITORS.Device draws with. The slots are WIDE (9.5 x 7 mm,
+     horizontal), never tall and skinny. Ports, LEDs and badge are symbols, not
+     a product's dimensions. */
   renderChassis() {
     if (!this.svgContainer) return;
 
-    const width = 640;
-    const height = 90;
-    const ifaceCount = this.model.interfaces.length;
+    const PANEL_W = 482.6, BODY_W = 440, U = 44.45, HOLE_OFFSET = 15.875;
+    const SLOT_W = 9.5, SLOT_H = 7, SLOT_FROM_EDGE = 7.95;
+    const EAR_W = (PANEL_W - BODY_W) / 2;
+    const M = 4;
+    const ru = Math.min(8, Math.max(1, parseInt(/(\d+)\s*U/i.exec(this.model.formFactor || '')?.[1] || '1', 10) || 1));
+    const H = ru * U;
+    const bx = M + EAR_W;
+    const midY = M + U / 2;                     // symbols sit on the first U
+    const parts = [];
 
-    let portsSvg = '';
+    for (const x0 of [M, M + PANEL_W - EAR_W]) {
+      parts.push(`<rect x="${x0}" y="${M}" width="${EAR_W}" height="${H}" fill="#0f0f11" stroke="#2B3C5D" stroke-width="0.5"/>`);
+      const cx = x0 === M ? M + SLOT_FROM_EDGE : M + PANEL_W - SLOT_FROM_EDGE;
+      for (let u = 0; u < ru; u++) {
+        const uc = M + u * U + U / 2;
+        for (const cy of [uc - HOLE_OFFSET, uc + HOLE_OFFSET]) {
+          parts.push(`<rect x="${cx - SLOT_W / 2}" y="${cy - SLOT_H / 2}" width="${SLOT_W}" height="${SLOT_H}" rx="${SLOT_H / 2}" fill="#121212" stroke="#2B3C5D" stroke-width="0.4"/>`);
+        }
+      }
+    }
+    parts.push(`<rect x="${bx}" y="${M}" width="${BODY_W}" height="${H}" rx="1" fill="url(#chassisGrad)" stroke="#2B3C5D" stroke-width="0.6"/>`);
+
+    // power, LEDs, hostname badge, vent: symbols
+    parts.push(`<circle cx="${bx + 12}" cy="${midY}" r="5" fill="#121212" stroke="#4ADE80" stroke-width="0.6"/>`);
+    parts.push(`<text x="${bx + 12}" y="${midY + 2}" fill="#4ADE80" font-size="5" font-weight="bold" font-family="sans-serif" text-anchor="middle">⏻</text>`);
+    parts.push(`<circle cx="${bx + 24}" cy="${midY - 5}" r="1.5" fill="#4ADE80"/><text x="${bx + 27}" y="${midY - 3.8}" fill="#888888" font-size="3.5" font-family="sans-serif">PWR</text>`);
+    parts.push(`<circle cx="${bx + 24}" cy="${midY + 5}" r="1.5" fill="#4A9EFF"/><text x="${bx + 27}" y="${midY + 6.2}" fill="#888888" font-size="3.5" font-family="sans-serif">ACT</text>`);
+    parts.push(`<rect x="${bx + 40}" y="${midY - 10}" width="95" height="20" rx="1.5" fill="#121212" stroke="#2B3C5D" stroke-width="0.4"/>`);
+    parts.push(`<text x="${bx + 44}" y="${midY - 1}" fill="#F4902C" font-size="6" font-weight="bold" font-family="JetBrains Mono, monospace">${esc(this.model.hostname)}</text>`);
+    parts.push(`<text x="${bx + 44}" y="${midY + 6}" fill="#888888" font-size="4" font-family="sans-serif">${esc(this.model.formFactor)}${this.model.powerWatts ? ` • ${esc(this.model.powerWatts)}W` : ''}</text>`);
+    for (let i = 0; i < 6; i++) parts.push(`<line x1="${bx + 142 + i * 4}" y1="${midY - 10}" x2="${bx + 142 + i * 4}" y2="${midY + 10}" stroke="#2c2c2c" stroke-width="1"/>`);
+
+    // one port symbol per interface, while they fit on the body
+    const PORT_PITCH = 18, PORT_W = 13, PORT_H = 11;
     this.model.interfaces.forEach((iface, idx) => {
-      const x = 320 + idx * 42;
-      if (x + 36 > width - 50) return;
-      const is10G = /^(10|25|40|100) Gbps/.test(iface.speed || '');
-      const portColor = is10G ? '#F4902C' : '#4A9EFF';
-
-      portsSvg += `
-        <rect x="${x}" y="32" width="28" height="24" rx="2" fill="#121212" stroke="${portColor}" stroke-width="1.5"/>
-        <circle cx="${x + 6}" cy="24" r="2.5" fill="#4ADE80"/>
-        <circle cx="${x + 22}" cy="24" r="2.5" fill="#F4902C"/>
-        <text x="${x + 14}" y="48" fill="#f4f4f5" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">${esc(iface.name)}</text>
-      `;
+      const x = bx + 175 + idx * PORT_PITCH;
+      if (x + PORT_W > bx + BODY_W - 4) return;
+      const fast = /^(10|25|40|100) Gbps/.test(iface.speed || '');
+      const color = fast ? '#F4902C' : '#4A9EFF';
+      parts.push(`<rect x="${x}" y="${midY - 4}" width="${PORT_W}" height="${PORT_H}" rx="1" fill="#121212" stroke="${color}" stroke-width="0.6"/>`);
+      parts.push(`<circle cx="${x + 2.5}" cy="${midY - 7}" r="1.2" fill="#4ADE80"/><circle cx="${x + PORT_W - 2.5}" cy="${midY - 7}" r="1.2" fill="#F4902C"/>`);
+      parts.push(`<text x="${x + PORT_W / 2}" y="${midY + 3}" fill="#f4f4f5" font-size="3.5" font-family="JetBrains Mono, monospace" text-anchor="middle">${esc(iface.name)}</text>`);
     });
 
-    const svg = `
-      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    const W = PANEL_W + 2 * M, HH = H + 2 * M;
+    this.svgContainer.innerHTML = `
+      <svg viewBox="0 0 ${W} ${HH}" width="100%" xmlns="http://www.w3.org/2000/svg" data-units="mm">
         <defs>
           <linearGradient id="chassisGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#2c2c2c"/>
             <stop offset="100%" stop-color="#18181b"/>
           </linearGradient>
         </defs>
-
-        <!-- Main 19-inch 1U Faceplate -->
-        <rect x="25" y="10" width="${width - 50}" height="70" rx="3" fill="url(#chassisGrad)" stroke="#2B3C5D" stroke-width="1.5"/>
-
-        <!-- Left Rack Ear with wide (horizontal) mounting slots -->
-        <rect x="10" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="24" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="17.5" cy="66" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-
-        <!-- Right Rack Ear with wide (horizontal) mounting slots -->
-        <rect x="${width - 25}" y="10" width="15" height="70" rx="2" fill="#0f0f11" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="24" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <ellipse cx="${width - 17.5}" cy="66" rx="5" ry="3" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-
-        <!-- Power Button & Health LEDs -->
-        <circle cx="50" cy="45" r="8" fill="#121212" stroke="#4ADE80" stroke-width="1.5"/>
-        <text x="50" y="48" fill="#4ADE80" font-size="9" font-weight="bold" font-family="sans-serif" text-anchor="middle">⏻</text>
-
-        <circle cx="72" cy="38" r="3" fill="#4ADE80"/>
-        <text x="80" y="41" fill="#888888" font-size="8" font-family="sans-serif">PWR</text>
-        <circle cx="72" cy="52" r="3" fill="#4A9EFF"/>
-        <text x="80" y="55" fill="#888888" font-size="8" font-family="sans-serif">ACT</text>
-
-        <!-- Hostname Badge -->
-        <rect x="110" y="28" width="140" height="34" rx="4" fill="#121212" stroke="#2B3C5D" stroke-width="1"/>
-        <text x="120" y="44" fill="#F4902C" font-size="12" font-weight="bold" font-family="JetBrains Mono, monospace">${esc(this.model.hostname)}</text>
-        <text x="120" y="56" fill="#888888" font-size="9" font-family="sans-serif">${esc(this.model.formFactor)}${this.model.powerWatts ? ` • ${esc(this.model.powerWatts)}W` : ''}</text>
-
-        <!-- Airflow Vent Grille -->
-        <g stroke="#2c2c2c" stroke-width="2">
-          <line x1="265" y1="26" x2="265" y2="64"/>
-          <line x1="272" y1="26" x2="272" y2="64"/>
-          <line x1="279" y1="26" x2="279" y2="64"/>
-          <line x1="286" y1="26" x2="286" y2="64"/>
-          <line x1="293" y1="26" x2="293" y2="64"/>
-          <line x1="300" y1="26" x2="300" y2="64"/>
-        </g>
-
-        <!-- Port matrix -->
-        ${portsSvg}
+        ${parts.join('\n        ')}
       </svg>
     `;
-    this.svgContainer.innerHTML = svg;
   }
 
   /* The interfaces are an APKTable (vendor/apk-table): one table module for the

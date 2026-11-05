@@ -454,22 +454,45 @@
         var sortKey = null, sortDir = 1, query = '', selected = -1, quiet = false, observer = null;
         var bar = opts.bar || null, search = opts.search || null, count = opts.count || null;
 
-        var headRows = thead ? childrenTagged(thead, 'TR') : [];
-        var heads = headRows.length ? cellsOf(headRows[headRows.length - 1]) : [];
-        var spanned = heads.some(function (th) { return (th.colSpan || 1) > 1; });
-        var seen = {};
-        var columns = heads.map(function (th, i) {
-            var label = text(th.getAttribute('data-label') || th.textContent).trim();
-            var key = th.getAttribute('data-key') || slug(label, i);
-            if (seen[key]) key = key + '-' + i;
-            seen[key] = true;
-            return { key: key, label: label, type: 'text', th: th };
-        });
-        if (!columns.length) {
-            var first = childrenTagged(tbody, 'TR')[0];
-            cellsOf(first || { children: [] }).forEach(function (_, i) { columns.push({ key: 'col' + i, label: '', type: 'text', th: null }); });
+        var heads = [], columns = [], sortable = false;
+
+        // The header is read, not declared: a page may write its <thead> after
+        // (or long after) the table is adopted, and every rewrite is re-read.
+        function readHead() {
+            var headRows = thead ? childrenTagged(thead, 'TR') : [];
+            heads = headRows.length ? cellsOf(headRows[headRows.length - 1]) : [];
+            var spanned = heads.some(function (th) { return (th.colSpan || 1) > 1; });
+            var seen = {};
+            columns = heads.map(function (th, i) {
+                var label = text(th.getAttribute('data-label') || th.textContent).trim();
+                var key = th.getAttribute('data-key') || slug(label, i);
+                if (seen[key]) key = key + '-' + i;
+                seen[key] = true;
+                return { key: key, label: label, type: 'text', th: th };
+            });
+            if (!columns.length) {
+                var first = childrenTagged(tbody, 'TR').filter(function (tr) { return cellsOf(tr).length > 1; })[0];
+                cellsOf(first || { children: [] }).forEach(function (_, i) { columns.push({ key: 'col' + i, label: '', type: 'text', th: null }); });
+            }
+            sortable = opts.sortable !== false && heads.length > 0 && !spanned;
+            if (sortable) bindHeads();
         }
-        var sortable = opts.sortable !== false && heads.length > 0 && !spanned;
+
+        function bindHeads() {
+            columns.forEach(function (c) {
+                if (!c.th || c.th.getAttribute('data-apk-nosort') !== null) return;
+                c.th.__apkKey = c.key;
+                if (c.th.__apkBound) return;
+                c.th.__apkBound = true;
+                c.th.classList.add('apk-sortable');
+                if (!c.th.title) c.th.title = 'Sort by ' + c.label;
+                var th = c.th;
+                th.addEventListener('click', function () {
+                    var k = th.__apkKey;
+                    handle.sort(k, sortKey === k && sortDir > 0 ? 'desc' : 'asc');
+                });
+            });
+        }
 
         function emit(action, detail) {
             var d = { table: id, action: action };
@@ -483,13 +506,25 @@
             return !!(tr.classList && (tr.classList.contains('apk-table-empty') || tr.getAttribute('data-apk-note') !== null));
         }
 
+        // A row marked data-apk-detail (an expanded flow's channels…) belongs to
+        // the data row above it: it sorts, filters and moves with that row.
+        function isDetail(tr) { return tr.getAttribute('data-apk-detail') !== null; }
         function allRows() { return childrenTagged(tbody, 'TR'); }
-        function dataRows() { return allRows().filter(function (tr) { return !isNote(tr); }); }
+        function dataRows() { return allRows().filter(function (tr) { return !isNote(tr) && !isDetail(tr); }); }
+        function link() {
+            var last = null;
+            allRows().forEach(function (tr) {
+                if (isDetail(tr)) { if (last) last.__apkDetails.push(tr); }
+                else if (!isNote(tr)) { last = tr; tr.__apkDetails = []; }
+            });
+        }
+        function detailsOf(tr) { return tr.__apkDetails || []; }
         function order(tr) { return Number(tr.getAttribute('data-apk-order')); }
 
         // Rows arrive in the page's order; that order is index i for select()
         // and rows(), whatever the sort shows.
         function stamp() {
+            link();
             var rs = dataRows();
             var fresh = rs.filter(function (tr) { return tr.getAttribute('data-apk-order') === null; });
             if (fresh.length === rs.length) {
@@ -533,13 +568,17 @@
             }
             if (sortKey !== null || query) {
                 // move data rows into the shown order; notes stay where they were
-                rs.forEach(function (tr) { tbody.appendChild(tr); });
+                rs.forEach(function (tr) {
+                    tbody.appendChild(tr);
+                    detailsOf(tr).forEach(function (d) { tbody.appendChild(d); });
+                });
             }
             var shown = 0;
             rs.forEach(function (tr) {
                 var on = matchesQuery(tr);
                 if (on) shown++;
                 tr.style.display = on ? '' : 'none';
+                detailsOf(tr).forEach(function (d) { d.style.display = on ? '' : 'none'; });
                 if (tr.classList) tr.classList.toggle('apk-selected', order(tr) === selected);
             });
             if (count) count.textContent = shown === rs.length ? rs.length + ' rows' : shown + ' of ' + rs.length;
@@ -551,18 +590,7 @@
             quiet = false;
         }
 
-        function refresh() { stamp(); apply(); }
-
-        if (sortable) {
-            columns.forEach(function (c) {
-                if (!c.th || c.th.getAttribute('data-apk-nosort') !== null) return;
-                c.th.classList.add('apk-sortable');
-                if (!c.th.title) c.th.title = 'Sort by ' + c.label;
-                c.th.addEventListener('click', function () {
-                    handle.sort(c.key, sortKey === c.key && sortDir > 0 ? 'desc' : 'asc');
-                });
-            });
-        }
+        function refresh() { if (!columns.length) readHead(); stamp(); apply(); }
 
         var handle = {
             id: id,
@@ -585,7 +613,14 @@
             sort: function (key, dir) {
                 sortKey = key === null || key === undefined ? null : key;
                 sortDir = dir === 'desc' ? -1 : 1;
-                if (sortKey === null) { quiet = true; ordered().forEach(function (tr) { tbody.appendChild(tr); }); quiet = false; }
+                if (sortKey === null) {
+                    quiet = true;
+                    ordered().forEach(function (tr) {
+                        tbody.appendChild(tr);
+                        detailsOf(tr).forEach(function (d) { tbody.appendChild(d); });
+                    });
+                    quiet = false;
+                }
                 apply();
                 emit('sort', { key: sortKey, value: sortDir > 0 ? 'asc' : 'desc' });
                 return handle;
@@ -630,9 +665,11 @@
         if (root.MutationObserver) {
             observer = new root.MutationObserver(function () { if (!quiet) refresh(); });
             observer.observe(tbody, { childList: true });
+            if (thead) new root.MutationObserver(function () { readHead(); apply(); }).observe(thead, { childList: true, subtree: true });
         }
 
         registry.set(id, handle);
+        readHead();
         refresh();
         return handle;
     }
@@ -648,11 +685,12 @@
      *  inner HTML, exactly as the page would have written it (escaping its
      *  values is still the page's job). Insert it, then APKTable.scan(container)
      *  (or let the observer find it) and the real table stands in its place.
-     *  opts: id, className, style, tableId, bodyId, sortable, toolbar. */
+     *  opts: id, className, style, tableId, headId, bodyId, bodyClass, sortable,
+     *  toolbar. */
     function markup(opts) {
         opts = opts || {};
         var o = {};
-        ['id', 'className', 'style', 'tableId', 'bodyId', 'sortable', 'toolbar', 'searchPlaceholder'].forEach(function (k) {
+        ['id', 'className', 'style', 'tableId', 'headId', 'bodyId', 'bodyClass', 'sortable', 'toolbar', 'searchPlaceholder'].forEach(function (k) {
             if (opts[k] !== undefined) o[k] = opts[k];
         });
         var s = '<div class="apk-table-host" data-apk-table-host="' + attr(o.id || '') + '" data-apk-opts="' + attr(JSON.stringify(o)) + '">';
@@ -696,11 +734,14 @@
             if (!parts[p] && p !== 'body') return;
             var part = el(tags[p]);
             if (p === 'body' && o.bodyId) part.setAttribute('id', o.bodyId);
+            if (p === 'head' && o.headId) part.setAttribute('id', o.headId);
+            if (p === 'body' && o.bodyClass) part.className = o.bodyClass;
             if (parts[p]) moveContent(parts[p], part);
             table.appendChild(part);
         });
         var parent = host.parentNode;
         var extra = {};
+        scan(table);   // a table drawn inside one of its cells
         if (o.toolbar === true) {
             extra = bar(o);
             if (parent) parent.insertBefore(extra.bar, host);
