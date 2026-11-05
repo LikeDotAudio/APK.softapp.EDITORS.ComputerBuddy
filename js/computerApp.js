@@ -14,6 +14,26 @@ export { ComputerNodeModel };
 export class ComputerApp {
   constructor() {
     this.model = new ComputerNodeModel();
+    window.APKSoftapp.describe({
+      name: 'Computer Buddy',
+      does: 'One computer as a compute node block: chassis, hardware, network interfaces and services; or a real one picked live from the network.',
+      inputs: [
+        { name: 'Compute node block', from: 'the CAD (when opened from a drawing), or a .json file via Open Block', kind: 'file' },
+        { name: 'Computers on the network', from: 'the bus: bare-metal agents, protocol scanners and Discovery presence', kind: 'bus' },
+        { name: 'Computer rules', from: 'config/computer-rules.json (which machines count as computers)', kind: 'file' },
+      ],
+      outputs: [
+        { name: 'Compute node block', to: 'the CAD on Save & Return and on every edit; standalone Save downloads <hostname>.json', kind: 'file' },
+      ],
+      controls: [
+        { name: 'Network panel', how: 'filter and search the live list; click one to load it (it follows the bus until you edit)' },
+        { name: 'Hostname, form factor, OS, CPU, RAM, GPU, storage, power (W)', how: 'edit; the chassis drawing follows' },
+        { name: '+ Add Interface', how: 'add a network interface row; edit or delete it in the table' },
+        { name: '+ Add Service (or Enter)', how: 'add a running service by name; x on its badge removes it' },
+        { name: 'Open Block / Network / Save & Return / Close', how: 'header buttons' },
+      ],
+      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing', 'config_invalid', 'device_stale'],
+    });
     /* The CAD bridge: cad.like.audio/host@1 through the vendored APKSoftapp
        client (vendor/apk-softapp). Same origin only; standalone, Save downloads. */
     this.host = window.APKSoftapp.connectHost({
@@ -83,7 +103,7 @@ export class ComputerApp {
 
     const btnOpen = document.getElementById('btn-open');
     if (btnOpen) {
-      btnOpen.addEventListener('click', () => {
+      const open = () => {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
@@ -91,6 +111,9 @@ export class ComputerApp {
           const file = e.target.files[0];
           if (!file) return;
           const reader = new FileReader();
+          reader.onerror = () => window.APKSoftapp.showProblem('file_unreadable', {
+            subject: file.name, detail: reader.error && reader.error.message, onRetry: open,
+          });
           reader.onload = (evt) => {
             try {
               const data = JSON.parse(evt.target.result);
@@ -98,13 +121,19 @@ export class ComputerApp {
               this.model.fromBlock(data);
               this.render();
             } catch (err) {
-              alert('Invalid block file: ' + err.message);
+              window.APKSoftapp.showProblem(err instanceof SyntaxError ? 'bad_json' : 'bad_input', {
+                subject: file.name,
+                detail: err.message,
+                fix: ['Open a compute node block .json (Save & Return outside the CAD downloads <hostname>.json).'],
+                onRetry: open,
+              });
             }
           };
           reader.readAsText(file);
         };
         input.click();
-      });
+      };
+      btnOpen.addEventListener('click', open);
     }
 
     const btnClose = document.getElementById('btn-close');

@@ -45,12 +45,18 @@ export class NetworkPanel {
   async start() {
     const C = window.APKContracts;
     if (!C?.Topics) return this.say('dead', 'SDK missing: vendor/apk-contracts/apk-contracts.global.js did not load.');
-    let rules;
-    try {
-      rules = await (await fetch(new URL('../config/computer-rules.json', import.meta.url))).json();
-    } catch (err) {
-      return this.say('dead', `Could not read config/computer-rules.json (${err.message}).`);
+    const S = window.APKSoftapp;
+    const retry = () => this.start();
+    const r = await S.fetchJson(new URL('../config/computer-rules.json', import.meta.url).href, { subject: 'config/computer-rules.json' });
+    if (!r.ok) {
+      this.say('dead', `Could not read config/computer-rules.json (${r.problem.title}).`);
+      S.showProblem(r.problem, {
+        fix: ['config/computer-rules.json beside this app says which machines count as computers; restore it from the repo if it is missing or broken.'],
+        onRetry: retry,
+      });
+      return;
     }
+    const rules = r.data;
     const strip = (t) => t.replace(/\/#$/, '');
     this.model = new NetworkComputers({
       rules,
@@ -69,7 +75,11 @@ export class NetworkPanel {
     try {
       bus = await window.APKBus.connect({ clientId: 'computer-buddy-' + Math.random().toString(16).slice(2) });
     } catch (_) { bus = null; }
-    if (!bus) return this.say('dead', 'No broker reachable from this page.');
+    if (!bus) {
+      this.say('dead', 'No broker reachable from this page.');
+      S.showProblem('broker_unreachable', { subject: 'Network panel', onRetry: retry });
+      return;
+    }
     this.bus = bus;
     const feed = (topic, text) => { if (this.model.ingest(topic, text)) this.schedule(); this.watchPresence(); };
     this.presenceSubs = new Set();
