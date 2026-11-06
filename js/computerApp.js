@@ -3,6 +3,7 @@
 
 import { ComputerNodeModel } from './computerModel.js';
 import { NetworkPanel } from './networkPanel.js';
+import { computerFromIfc, saveComputerModel, schemaOf } from './computerIfc.js';
 
 /* APKSoftapp.esc when the client is loaded; the same five-character escape in node tests. */
 const esc = (s) => (typeof window !== 'undefined' && window.APKSoftapp ? window.APKSoftapp.esc(s)
@@ -18,12 +19,12 @@ export class ComputerApp {
       name: 'Computer Buddy',
       does: 'One computer as a compute node block: chassis, hardware, network interfaces and services; or a real one picked live from the network.',
       inputs: [
-        { name: 'Compute node block', from: 'the CAD (when opened from a drawing), or a .json file via Open Block', kind: 'file' },
+        { name: 'Compute node block', from: 'the CAD (when opened from a drawing), or Open Block: the .json or its .ifc twin (IFC4X3_ADD2)', kind: 'file' },
         { name: 'Computers on the network', from: 'the bus: bare-metal agents, protocol scanners and Discovery presence', kind: 'bus' },
         { name: 'Computer rules', from: 'config/computer-rules.json (which machines count as computers)', kind: 'file' },
       ],
       outputs: [
-        { name: 'Compute node block', to: 'the CAD on Save & Return and on every edit; standalone Save downloads <hostname>.json', kind: 'file' },
+        { name: 'Compute node block', to: 'the CAD on Save & Return and on every edit; standalone, Save Model: <hostname>.json and its .ifc twin', kind: 'file' },
       ],
       controls: [
         { name: 'Network panel', how: 'filter and search the live list; click one to load it (it follows the bus until you edit)' },
@@ -32,7 +33,7 @@ export class ComputerApp {
         { name: '+ Add Service (or Enter)', how: 'add a running service by name; x on its badge removes it' },
         { name: 'Open Block / Network / Save & Return / Close', how: 'header buttons' },
       ],
-      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing', 'config_invalid', 'device_stale'],
+      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing', 'config_invalid', 'device_stale', 'save_failed'],
     });
     /* The CAD bridge: cad.like.audio/host@1 through the vendored APKSoftapp
        client (vendor/apk-softapp). Same origin only; standalone, Save downloads. */
@@ -93,48 +94,35 @@ export class ComputerApp {
     }
   }
 
-  initControls() {
-    const btnSave = document.getElementById('btn-save');
-    if (btnSave) {
-      btnSave.addEventListener('click', () => {
-        this.host.save(this.model.toBlock(), { name: this.model.hostname, filename: this.model.hostname || 'computer_node' });
-      });
-    }
+  /** Save & Return: into the CAD; standalone, Save Model — <hostname>.json and its .ifc twin (js/computerIfc.js). */
+  save() {
+    return saveComputerModel(window.APKSoftapp, this.host, this.model.toBlock(), { onRetry: () => this.save() });
+  }
 
-    const btnOpen = document.getElementById('btn-open');
-    if (btnOpen) {
-      const open = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onerror = () => window.APKSoftapp.showProblem('file_unreadable', {
-            subject: file.name, detail: reader.error && reader.error.message, onRetry: open,
-          });
-          reader.onload = (evt) => {
-            try {
-              const data = JSON.parse(evt.target.result);
-              this.following = false;
-              this.model.fromBlock(data);
-              this.render();
-            } catch (err) {
-              window.APKSoftapp.showProblem(err instanceof SyntaxError ? 'bad_json' : 'bad_input', {
-                subject: file.name,
-                detail: err.message,
-                fix: ['Open a compute node block .json (Save & Return outside the CAD downloads <hostname>.json).'],
-                onRetry: open,
-              });
-            }
-          };
-          reader.readAsText(file);
-        };
-        input.click();
-      };
-      btnOpen.addEventListener('click', open);
+  /** Open Block: a compute node .json or an IFC model (.ifc; an ISO 10303-21 header decides for any other name). */
+  async open() {
+    const S = window.APKSoftapp;
+    const fix = ['Open a compute node block .json, or an .ifc with an IfcCommunicationsAppliance (COMPUTER) — Save & Return outside the CAD writes both.'];
+    const r = await S.openModel({ fromIfc: (text) => computerFromIfc(text) });
+    if (!r.ok) {
+      if (!r.cancelled) S.showProblem(r.problem, { fix, onRetry: () => this.open() });
+      return;
     }
+    if (!r.model || typeof r.model !== 'object' || Array.isArray(r.model)) {
+      S.showProblem('bad_input', { subject: r.name, detail: 'not a compute node block', fix, onRetry: () => this.open() });
+      return;
+    }
+    this.following = false;
+    this.model.fromBlock(r.model);
+    const tag = document.getElementById('block-tag');
+    if (tag && r.kind === 'ifc') tag.textContent = `COMPUTE NODE · ${schemaOf(r.text)}`;
+    this.render();
+    this.host.changed(this.model.toBlock());
+  }
+
+  initControls() {
+    document.getElementById('btn-save')?.addEventListener('click', () => this.save());
+    document.getElementById('btn-open')?.addEventListener('click', () => this.open());
 
     const btnClose = document.getElementById('btn-close');
     if (btnClose) {
