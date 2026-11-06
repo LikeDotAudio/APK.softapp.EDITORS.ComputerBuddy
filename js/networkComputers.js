@@ -14,6 +14,16 @@
                                      (identity/device_manifest, host,
                                      host/filesystem_layout, network/…), and a
                                      MonitorProbes status object. Certain.
+     System/BareMetal/{target}/{node}/timeline
+                                     the same tables as one post of the last
+                                     minute (contracts BareMetalTimeline:
+                                     baseline + timed deltas, every 30 s). Folded
+                                     into the rows above — each row reads what it
+                                     read at the post's `to`, last_seen = `to` —
+                                     and kept whole as agent.timeline for history.
+                                     The retained tables are restated only on
+                                     change (or every few minutes), so the
+                                     timeline is what keeps an agent fresh.
      System/Protocols/{proto}/Device/[kind/]{id}/{field}
                                      what a scanner saw: device_class,
                                      manufacturer (the MAC's OUI), model, name,
@@ -35,6 +45,27 @@
 const MAC_RE = /(?<![0-9a-f])(?<![0-9a-f]{2}[:_-])([0-9a-f]{2})([:_-])([0-9a-f]{2})\2([0-9a-f]{2})\2([0-9a-f]{2})\2([0-9a-f]{2})\2([0-9a-f]{2})(?![:_-]?[0-9a-f])/i;
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 const HASHY_RE = /^[0-9a-f-]{16,}$/i;
+
+/** A contracts BareMetalTimeline post (baremetal-timeline.ts): told by its shape, not its topic. */
+export function isTimeline(doc) {
+  return !!doc && typeof doc === 'object' && !Array.isArray(doc)
+    && Array.isArray(doc.deltas) && !!doc.baseline && typeof doc.baseline === 'object' && typeof doc.to === 'string';
+}
+
+/** The tables at `to`: table → key → {value, unit?, t}, `t` being when that value began (contracts foldTimeline). */
+export function foldTimeline(doc) {
+  const out = {};
+  for (const [table, keys] of Object.entries(doc.baseline || {})) {
+    out[table] = {};
+    for (const [key, e] of Object.entries(keys || {})) if (e && typeof e === 'object') out[table][key] = { value: e.value ?? null, unit: e.unit, t: doc.from };
+  }
+  for (const d of doc.deltas) {
+    if (!d || !d.table || !d.key) continue;
+    const table = (out[d.table] ||= {});
+    table[d.key] = { value: d.value ?? null, unit: d.unit ?? table[d.key]?.unit, t: d.t };
+  }
+  return out;
+}
 
 /** The MAC inside any string ("ping_00_07_F5_42_06_A2", "nic:b8:27:eb:…"), as aa:bb:cc:dd:ee:ff, or null. */
 export function macIn(s) {
@@ -152,6 +183,7 @@ export class NetworkComputers {
   _bareMetal(seg, text) {
     const target = seg[0];
     const doc = parseJson(text);
+    if (isTimeline(doc)) return this._timeline(seg, doc);
     if (Array.isArray(doc)) {
       let changed = false;
       for (const row of doc) {
@@ -175,6 +207,28 @@ export class NetworkComputers {
       return true;
     }
     return false;
+  }
+
+  /** A BareMetalTimeline post: fold baseline + deltas to the tables at `to`. A row already
+   *  holding a newer reading (a retained table restated after this post) is left alone. */
+  _timeline(seg, doc) {
+    const node = doc.node || seg[1];
+    if (!node) return false;
+    const a = this._agent(node, seg[0]);
+    const to = Date.parse(doc.to);
+    if (a.timeline && Date.parse(a.timeline.to) > to) return false;
+    a.timeline = doc;
+    for (const [section, rows] of Object.entries(foldTimeline(doc))) {
+      if (!a.sections.has(section)) a.sections.set(section, new Map());
+      const sec = a.sections.get(section);
+      for (const [key, r] of Object.entries(rows)) {
+        const had = sec.get(key);
+        if (had && Date.parse(had.last_seen) > to) continue;
+        if (r.value === null && r.t !== doc.from) { sec.delete(key); continue; }
+        sec.set(key, { node, key, value: r.value, ...(r.unit ? { unit: r.unit } : {}), last_seen: doc.to, since: r.t });
+      }
+    }
+    return true;
   }
 
   _agent(node, target) {

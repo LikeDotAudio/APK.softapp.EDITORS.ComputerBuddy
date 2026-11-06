@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { Topics, discoveryPresenceActive } from '../vendor/apk-contracts/apk-contracts.mjs';
-import { NetworkComputers, macIn, isRandomisedMac } from '../js/networkComputers.js';
+import { NetworkComputers, macIn, isRandomisedMac, isTimeline, foldTimeline } from '../js/networkComputers.js';
 
 const rules = JSON.parse(fs.readFileSync(new URL('../config/computer-rules.json', import.meta.url)));
 const NOW = Date.parse('2026-11-04T12:00:00Z');
@@ -97,4 +97,50 @@ test('ignored protocols and an ESP32 never show as computers', () => {
   const ms = nc.machines();
   assert.equal(ms.length, 1);
   assert.equal(ms[0].tier, 'not');
+});
+
+// PI/{host}/timeline — contracts BareMetalTimeline, the shape the desktop monitor posts every 30 s.
+const timeline = (from, to, deltas, extra = {}) => ({
+  v: 1, node: 'APK-Shop', from, to, interval_s: 5, window_s: 60, post_every_s: 30, samples: 12,
+  baseline: {
+    host: { 'memory.used': { value: 52.7, unit: '%' }, 'load.1m': { value: 1.0 } },
+    'network/interfaces_and_vlans': { 'veth1.state': { value: 'up' } },
+  },
+  deltas, ...extra,
+});
+
+test('a timeline post keeps a quiet agent fresh: its tables fold to `to`, and it is not mistaken for a status', () => {
+  const nc = make();
+  feedAgent(nc, '2026-11-04T11:50:00Z');           // the retained tables, said 10 min ago and not since
+  assert.equal(nc.machines()[0].live.state, 'kinda');
+  const post = timeline('2026-11-04T11:58:00.000Z', '2026-11-04T11:58:55.000Z', [
+    { t: '2026-11-04T11:58:20.000Z', table: 'host', key: 'load.1m', value: 3.5 },
+    { t: '2026-11-04T11:58:40.000Z', table: 'network/interfaces_and_vlans', key: 'veth1.state', value: null },
+  ]);
+  assert.equal(isTimeline(post), true);
+  assert.equal(isTimeline([]), false);
+  nc.ingest(`${B}/PI/APK-Shop/timeline`, JSON.stringify(post));
+  const m = nc.machines()[0];
+  assert.equal(m.live.state, 'good', 'the post re-verified it at `to`');
+  const a = nc.agents.get('APK-Shop');
+  assert.equal(a.status, null, 'a timeline is not a probe status');
+  assert.equal(a.timeline.to, post.to);
+  const host = a.sections.get('host');
+  assert.equal(host.get('load.1m').value, 3.5);
+  assert.equal(host.get('load.1m').since, '2026-11-04T11:58:20.000Z');
+  assert.equal(host.get('memory.used').unit, '%');
+  assert.equal(a.sections.get('network/interfaces_and_vlans').has('veth1.state'), false, 'a key that went is gone');
+  assert.equal(a.sections.get('identity/device_manifest').get('hostname').value, 'APK-Shop', 'tables the post does not hold are untouched');
+});
+
+test('an older timeline never overwrites newer readings', () => {
+  const nc = make();
+  nc.ingest(`${B}/PI/APK-Shop/timeline`, JSON.stringify(timeline('2026-11-04T11:58:00Z', '2026-11-04T11:58:55Z', [])));
+  nc.ingest(`${B}/PI/APK-Shop/host`, JSON.stringify([row('load.1m', 9, '2026-11-04T11:59:30Z')]));
+  nc.ingest(`${B}/PI/APK-Shop/timeline`, JSON.stringify(timeline('2026-11-04T11:57:30Z', '2026-11-04T11:58:25Z', [])));
+  const a = nc.agents.get('APK-Shop');
+  assert.equal(a.timeline.to, '2026-11-04T11:58:55Z', 'the replayed older post is refused');
+  assert.equal(a.sections.get('host').get('load.1m').value, 9);
+  const folded = foldTimeline(timeline('2026-11-04T11:58:00Z', '2026-11-04T11:58:55Z', [{ t: '2026-11-04T11:58:10Z', table: 'new', key: 'k', value: 1, unit: 'B/s' }]));
+  assert.deepEqual(folded.new.k, { value: 1, unit: 'B/s', t: '2026-11-04T11:58:10Z' });
 });
